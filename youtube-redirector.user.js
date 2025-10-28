@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         YouTube Redirector
 // @namespace    http://tampermonkey.net/
-// @version      0.2
+// @version      0.3
 // @description  Redirect from Techloq filter page to SK Video Dashboard with the YouTube video ready to play.
 // @author       Shalom Karr
 // @match        *://filter.techloq.com/block-page*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=youtube.com
-// @downloadURL  https://raw.githubusercontent.com/YOUR_USERNAME/youtube-redirector-script/main/youtube-redirector.user.js
-// @updateURL    https://raw.githubusercontent.com/YOUR_USERNAME/youtube-redirector-script/main/youtube-redirector.user.js
+// @downloadURL  https://raw.githubusercontent.com/Shalom-Karr/youtube-redirector/main/youtube-redirector.user.js
+// @updateURL    https://raw.githubusercontent.com/Shalom-Karr/youtube-redirector/main/youtube-redirector.user.js
 // @grant        none
 // ==/UserScript==
 
@@ -49,7 +49,7 @@
 
         if (videoID) {
             // Redirect to your application with the video ID as a URL parameter
-            const destination = `https://testvideoplay.netlify.app/video?source=${encodeURIComponent(videoID)}`;
+            const destination = `https://skyoutube.pages.dev/video?source=${encodeURIComponent(videoID)}`;
             console.log(`Redirector Script: YouTube video ID ${videoID} found. Redirecting to: ${destination}`);
             window.location.href = destination;
         } else {
