@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         YouTube to SK Video Dashboard Redirector
+// @name         YouTube to SK Dashboard Redirector
 // @namespace    http://tampermonkey.net/
-// @version      2.0
+// @version      2.1
 // @description  Redirects from Techloq filter pages and direct YouTube links to the SK Video Dashboard.
 // @author       Shalom Karr / YH Studios
-// @match        *://*/*?*v=*
+// @match        *://filter.techloq.com/block-page*
 // @match        https://www.youtube.com/watch*
 // @grant        none
 // @updateURL    https://raw.githubusercontent.com/Shalom-Karr/youtube-redirector/main/youtube-redirector.user.js
@@ -15,11 +15,14 @@
     'use strict';
 
     // --- CONFIGURATION ---
-    // !!! IMPORTANT: Replace this URL with the base URL of your video dashboard player.
-    const DASHBOARD_URL = 'https://YOUR-SK-VIDEO-DASHBOARD-URL-HERE/player?v=';
-    // Example: const DASHBOARD_URL = 'https://sk-videos.com/play?v=';
+    // This is the destination URL for your video player.
+    const DASHBOARD_URL = 'https://skyoutube.pages.dev/video?source=';
     // --- END CONFIGURATION ---
 
+    // Stop the script if it's running inside an iframe to prevent unwanted behavior.
+    if (window.top !== window.self) {
+        return;
+    }
 
     /**
      * Extracts the YouTube video ID from a URL string.
@@ -27,24 +30,10 @@
      * @returns {string|null} The video ID or null if not found.
      */
     function getVideoId(url) {
-        try {
-            const urlObj = new URL(url);
-            // Handles both youtube.com and youtu.be links
-            if (urlObj.hostname.includes('youtube.com')) {
-                return urlObj.searchParams.get('v');
-            }
-            if (urlObj.hostname.includes('youtu.be')) {
-                return urlObj.pathname.slice(1);
-            }
-        } catch (e) {
-            // Fallback for malformed URLs that might just contain the ID in text
-            const regex = /(?:v=|\/)([0-9A-Za-z_-]{11}).*/;
-            const match = url.match(regex);
-            if (match) {
-                return match[1];
-            }
-        }
-        return null;
+        // This pattern handles various YouTube URL formats (watch, embed, youtu.be, etc.)
+        const pattern = /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+        const match = url.match(pattern);
+        return match ? match[1] : null;
     }
 
     /**
@@ -53,15 +42,15 @@
      */
     function redirectToDashboard(videoId) {
         if (videoId) {
-            const redirectUrl = DASHBOARD_URL + videoId;
+            const redirectUrl = DASHBOARD_URL + encodeURIComponent(videoId);
             console.log(`[YT Redirector] Redirecting to: ${redirectUrl}`);
-            // Use replace so the back button doesn't get stuck in a loop
+            // Use window.location.replace to avoid breaking the browser's back button
             window.location.replace(redirectUrl);
         }
     }
 
+    // --- SCRIPT EXECUTION LOGIC ---
 
-    // --- MAIN SCRIPT LOGIC ---
     const currentUrl = window.location.href;
     const currentHostname = window.location.hostname;
 
@@ -72,26 +61,24 @@
         return; // Stop the script here
     }
 
-    // SCENARIO 2: We are on a different page (like a Techloq filter) that might contain a YouTube link.
-    // This part of the logic will search the page content for a YouTube link to redirect from.
-    // This is a more robust way to handle filter pages without knowing their exact URL.
-    if (document.body && document.body.innerText.includes('youtube.com/watch?v=')) {
-        // Find all links on the page
-        const links = Array.from(document.getElementsByTagName('a'));
-        for (const link of links) {
-            const videoId = getVideoId(link.href);
-            if (videoId) {
-                // We found a valid YouTube link, redirect and stop searching.
-                redirectToDashboard(videoId);
-                return;
+    // SCENARIO 2: We are on the Techloq filter page.
+    if (currentHostname.includes('filter.techloq.com')) {
+        // The content on the filter page might load dynamically. We wait a moment to ensure it's available.
+        setTimeout(() => {
+            const blockDiv = document.querySelector('div.block-url');
+            if (blockDiv) {
+                const linkElement = blockDiv.querySelector('a');
+                if (linkElement && linkElement.href) {
+                    const videoId = getVideoId(linkElement.href);
+                    redirectToDashboard(videoId);
+                } else {
+                    console.log("[YT Redirector] No link found inside the .block-url element on Techloq page.");
+                }
+            } else {
+                 console.log("[YT Redirector] No .block-url element found on Techloq page.");
             }
-        }
-
-        // If no <a> tag was found, try to find the link in the page's plain text
-        const textMatch = document.body.innerText.match(/https?:\/\/(?:www\.)?youtube\.com\/watch\?v=([0-9A-Za-z_-]{11})/);
-        if (textMatch && textMatch[1]) {
-             redirectToDashboard(textMatch[1]);
-             return;
-        }
+        }, 500); // A 500ms delay is usually sufficient.
+        return; // Stop the script here
     }
+
 })();
