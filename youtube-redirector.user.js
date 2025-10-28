@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         YouTube to SK Dashboard Redirector
 // @namespace    http://tampermonkey.net/
-// @version      3.4 // Optimized for Persistent Polling (5 minutes max)
-// @description  Instantly redirects from YouTube video pages. On Techloq pages, it persistently polls (checks) for the redirection link until found (up to 5 minutes).
+// @version      3.7 // Maximized Persistence + Broader Match
+// @description  Instantly redirects from YouTube video pages. On ALL Techloq pages, it performs immediate and extremely persistent polling (checking the DOM/URL every 250ms for 5 minutes) until the redirect link is found.
 // @author       Shalom Karr / YH Studios
-// @match        *://filter.techloq.com/block-page*
+// @match        *://filter.techloq.com/*  
 // @match        *://www.youtube.com/watch*
 // @run-at       document-start 
 // @grant        none
@@ -18,10 +18,9 @@
     // --- CONFIGURATION ---
     const DASHBOARD_URL = 'https://skyoutube.pages.dev/video?source=';
     
-    // Techloq Polling Settings: 5 minutes total polling time
-    // We check very aggressively until the external program finishes its job.
+    // Polling Settings: 5 minutes total polling time
     const MAX_TECHLOQ_RETRIES = 1200; 
-    const TECHLOQ_RETRY_INTERVAL_MS = 250; // Check every quarter second
+    const TECHLOQ_RETRY_INTERVAL_MS = 250; 
     // --- END CONFIGURATION ---
 
     // Stop the script if it's running inside an iframe.
@@ -35,7 +34,6 @@
      * Extracts the YouTube video ID from a URL string.
      */
     function getVideoId(url) {
-        // This regex is robust against various URL forms (watch?v, youtu.be/, embed/, shorts/)
         const pattern = /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?|shorts)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
         const match = url.match(pattern);
         return match ? match[1] : null;
@@ -55,28 +53,23 @@
     
     /**
      * Tries to find the video ID using both URL parameters and DOM elements.
-     * @returns {string|null} The video ID if found.
      */
     function findVideoId() {
         let videoId = null;
 
-        // METHOD A: Check URL Parameters (Instant check, most reliable if available)
+        // METHOD A: Check URL Parameters 
         try {
-            // The HAR log confirms the URL: /block-page?redirectUrl=https:%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D9tPKsnxzrBs
             const params = new URLSearchParams(window.location.search);
             const encodedRedirectUrl = params.get('redirectUrl');
 
             if (encodedRedirectUrl) {
-                // Decode to get the clean YouTube URL string
                 const decodedUrl = decodeURIComponent(encodedRedirectUrl);
                 videoId = getVideoId(decodedUrl);
                 if (videoId) return videoId;
             }
-        } catch (e) {
-            // Failsafe
-        }
+        } catch (e) {}
         
-        // METHOD B: Check DOM Elements (If the external program writes the link to the DOM)
+        // METHOD B: Check DOM Elements 
         const blockDiv = document.querySelector('div.block-url');
         if (blockDiv) {
             const linkElement = blockDiv.querySelector('a');
@@ -95,7 +88,6 @@
         const videoId = findVideoId();
 
         if (videoId) {
-            // Success! Redirect instantly.
             redirectToDashboard(videoId);
             return; 
         }
@@ -104,10 +96,8 @@
         techloqAttemptCount++;
         
         if (techloqAttemptCount < MAX_TECHLOQ_RETRIES) {
-            // Schedule the next check in 250ms
             setTimeout(attemptTechloqRedirect, TECHLOQ_RETRY_INTERVAL_MS);
         }
-        // If max retries hit, the script gracefully stops.
     }
 
 
@@ -119,14 +109,14 @@
     // SCENARIO 1: YouTube Watch Page (Instant redirect)
     if (currentHostname === 'www.youtube.com' && currentUrl.includes('/watch')) {
         const videoId = getVideoId(currentUrl);
-        redirectToDashboard(videoId);
+        if (videoId) {
+            redirectToDashboard(videoId);
+        }
         return; 
     }
 
     // SCENARIO 2: Techloq Filter Page (Maximal Persistent Polling)
     if (currentHostname.includes('filter.techloq.com')) {
-        // Start checking immediately and persistently for 5 minutes.
-        // This is the most resilient way to wait for the external filter to finish writing the URL data.
         attemptTechloqRedirect();
         return;
     }
