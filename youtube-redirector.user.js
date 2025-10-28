@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         YouTube to SK Dashboard Redirector
 // @namespace    http://tampermonkey.net/
-// @version      2.4 // Increased version number
-// @description  Instantly redirects from YouTube video pages and Techloq filter pages to the SK Video Dashboard.
+// @version      3.3 // New version using MutationObserver for max reliability
+// @description  Instantly redirects from YouTube video pages. On Techloq block pages, it waits passively until the redirection link is injected, then redirects instantly.
 // @author       Shalom Karr / YH Studios
 // @match        *://filter.techloq.com/block-page*
-// @match        https://www.youtube.com/watch*
-// @run-at       document-start
+// @match        *://www.youtube.com/watch*
+// @run-at       document-start 
 // @grant        none
 // @updateURL    https://raw.githubusercontent.com/Shalom-Karr/youtube-redirector/main/youtube-redirector.user.js
 // @downloadURL  https://raw.githubusercontent.com/Shalom-Karr/youtube-redirector/main/youtube-redirector.user.js
@@ -17,10 +17,6 @@
 
     // --- CONFIGURATION ---
     const DASHBOARD_URL = 'https://skyoutube.pages.dev/video?source=';
-    
-    // Techloq Retry Settings
-    const MAX_TECHLOQ_RETRIES = 5;
-    const TECHLOQ_RETRY_INTERVAL_MS = 200; // 1/5 of a second
     // --- END CONFIGURATION ---
 
     // Stop the script if it's running inside an iframe.
@@ -28,15 +24,12 @@
         return;
     }
 
-    let techloqAttemptCount = 0;
-
     /**
      * Extracts the YouTube video ID from a URL string.
      * @param {string} url The URL to parse.
      * @returns {string|null} The video ID or null if not found.
      */
     function getVideoId(url) {
-        // Regex handles standard 'watch?v=', shortened 'youtu.be/', and embed paths.
         const pattern = /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
         const match = url.match(pattern);
         return match ? match[1] : null;
@@ -44,39 +37,63 @@
 
     /**
      * Redirects the browser to the dashboard with the given video ID.
-     * @param {string} videoId The YouTube video ID.
      */
     function redirectToDashboard(videoId) {
         if (videoId) {
             const redirectUrl = DASHBOARD_URL + encodeURIComponent(videoId);
-            // Use window.location.replace to prevent cluttering the back history
             window.location.replace(redirectUrl);
         }
     }
+    
+    // --- TECHLOQ SPECIFIC LOGIC ---
 
     /**
-     * Tries to find the redirect URL on the Techloq page and initiates redirect.
+     * Attempts to find the video ID using both URL parameters and DOM elements.
+     * @returns {string|null} The video ID if found.
      */
-    function attemptTechloqRedirect() {
-        const params = new URLSearchParams(window.location.search);
-        const encodedRedirectUrl = params.get('redirectUrl');
+    function findVideoId() {
+        let videoId = null;
 
-        if (encodedRedirectUrl) {
-            // Found the URL! Decode it and extract the ID.
-            const decodedUrl = decodeURIComponent(encodedRedirectUrl);
-            const videoId = getVideoId(decodedUrl);
-            
-            // Redirect instantly
+        // METHOD A: Check URL Parameters (redirectUrl)
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const encodedRedirectUrl = params.get('redirectUrl');
+
+            if (encodedRedirectUrl) {
+                const decodedUrl = decodeURIComponent(encodedRedirectUrl);
+                videoId = getVideoId(decodedUrl);
+            }
+        } catch (e) {
+            // Failsafe if location access is blocked or delayed
+        }
+        
+        // METHOD B: Check DOM Elements (Fallback, as suggested by friend's script)
+        if (!videoId) {
+            const blockDiv = document.querySelector('div.block-url');
+            if (blockDiv) {
+                const linkElement = blockDiv.querySelector('a');
+                if (linkElement && linkElement.href) {
+                    videoId = getVideoId(linkElement.href);
+                }
+            }
+        }
+        
+        return videoId;
+    }
+
+    /**
+     * Observer callback function.
+     * @param {MutationRecord[]} mutationsList 
+     * @param {MutationObserver} observer 
+     */
+    function observerCallback(mutationsList, observer) {
+        const videoId = findVideoId();
+
+        if (videoId) {
+            // Success! Stop observing and redirect.
+            observer.disconnect();
             redirectToDashboard(videoId);
-            return; // Success, stop execution
         }
-
-        // If not found instantly, schedule a retry.
-        techloqAttemptCount++;
-        if (techloqAttemptCount < MAX_TECHLOQ_RETRIES) {
-            setTimeout(attemptTechloqRedirect, TECHLOQ_RETRY_INTERVAL_MS);
-        }
-        // If MAX_RETRIES is reached, the script quietly exits, allowing the Techloq page to load normally.
     }
 
 
@@ -85,17 +102,35 @@
     const currentUrl = window.location.href;
     const currentHostname = window.location.hostname;
 
-    // SCENARIO 1: We are on a standard YouTube watch page. (Instant redirect)
+    // SCENARIO 1: YouTube Watch Page (Instant redirect at document-start)
     if (currentHostname === 'www.youtube.com' && currentUrl.includes('/watch')) {
         const videoId = getVideoId(currentUrl);
         redirectToDashboard(videoId);
         return; 
     }
 
-    // SCENARIO 2: We are on the Techloq filter page.
+    // SCENARIO 2: Techloq Filter Page (Passive wait for content)
     if (currentHostname.includes('filter.techloq.com')) {
-        // Run the instant check, which initiates polling if needed.
-        attemptTechloqRedirect();
+        
+        // First, check immediately, as the link might sometimes be ready.
+        const immediateId = findVideoId();
+        if (immediateId) {
+            redirectToDashboard(immediateId);
+            return;
+        }
+
+        // If not ready, start the MutationObserver to wait for dynamic content/URL injection.
+        const observer = new MutationObserver(observerCallback);
+
+        // Configuration: Watch for changes to the entire DOM tree (subtrees) and attributes 
+        // (in case the URL is updated on the body's attributes, though we focus on children).
+        const config = { childList: true, subtree: true };
+
+        // Start observing the body for changes.
+        observer.observe(document.body, config);
+
+        // Note: The observer is designed to run indefinitely until the redirect succeeds, 
+        // ensuring maximum chance of catching the late-loaded URL.
         return;
     }
 
