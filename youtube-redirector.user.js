@@ -16,7 +16,7 @@
     'use strict';
 
     // --- CONFIGURATION ---
-    const DASHBOARD_URL = 'https://skyoutube.pages.dev/video?source=';
+    const DASHBOARD_URL = 'https://skyoutube.netlify.app/video?source=';
     
     // Polling Settings: 5 minutes total polling time
     const MAX_TECHLOQ_RETRIES = 1200; 
