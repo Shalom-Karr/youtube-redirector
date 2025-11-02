@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube to SK Dashboard Redirector
 // @namespace    http://tampermonkey.net/
-// @version      3.7 // Maximized Persistence + Broader Match
+// @version      4.0 // Maximized Persistence + Broader Match
 // @description  Instantly redirects from YouTube video pages. On ALL Techloq pages, it performs immediate and extremely persistent polling (checking the DOM/URL every 250ms for 5 minutes) until the redirect link is found.
 // @author       Shalom Karr / YH Studios
 // @match        *://filter.techloq.com/*  
