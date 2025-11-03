@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         YouTube to SK Dashboard Redirector
 // @namespace    http://tampermonkey.net/
-// @version      4.0 // Maximized Persistence + Broader Match.
-// @description  Instantly redirects from YouTube video pages. On ALL Techloq pages, it performs immediate and extremely persistent polling (checking the DOM/URL every 250ms for 5 minutes) until the redirect link is found.
+// @version      4.1 // Added Playlist Support
+// @description  Instantly redirects from YouTube video and playlist pages. On ALL Techloq pages, it performs immediate and extremely persistent polling.
 // @author       Shalom Karr / YH Studios
-// @match        *://filter.techloq.com/*  
+// @match        *://filter.techloq.com/*
 // @match        *://www.youtube.com/watch*
-// @run-at       document-start 
+// @match        *://www.youtube.com/playlist*
+// @run-at       document-start
 // @grant        none
 // @updateURL    https://raw.githubusercontent.com/Shalom-Karr/youtube-redirector/main/youtube-redirector.user.js
 // @downloadURL  https://raw.githubusercontent.com/Shalom-Karr/youtube-redirector/main/youtube-redirector.user.js
@@ -16,109 +17,101 @@
     'use strict';
 
     // --- CONFIGURATION ---
-    const DASHBOARD_URL = 'https://skyoutubebeta.netlify.app/video?source=';
-    
-    // Polling Settings: 5 minutes total polling time
-    const MAX_TECHLOQ_RETRIES = 1200; 
-    const TECHLOQ_RETRY_INTERVAL_MS = 250; 
+    const BASE_DASHBOARD_URL = 'https://skyoutubebeta.netlify.app';
+
+    // Polling Settings
+    const MAX_TECHLOQ_RETRIES = 1200;
+    const TECHLOQ_RETRY_INTERVAL_MS = 250;
     // --- END CONFIGURATION ---
 
-    // Stop the script if it's running inside an iframe.
-    if (window.top !== window.self) {
-        return;
-    }
+    if (window.top !== window.self) return;
 
     let techloqAttemptCount = 0;
 
-    /**
-     * Extracts the YouTube video ID from a URL string.
-     */
     function getVideoId(url) {
         const pattern = /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?|shorts)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-        const match = url.match(pattern);
-        return match ? match[1] : null;
+        return url.match(pattern)?.[1] || null;
     }
 
-    /**
-     * Redirects the browser to the dashboard with the given video ID.
-     */
-    function redirectToDashboard(videoId) {
-        if (videoId) {
-            const redirectUrl = DASHBOARD_URL + encodeURIComponent(videoId);
-            window.location.replace(redirectUrl);
-        }
+    function getPlaylistId(url) {
+        const pattern = /[?&]list=([a-zA-Z0-9_-]+)/;
+        return url.match(pattern)?.[1] || null;
     }
-    
+
+    function redirectToDashboard(type, id) {
+        if (!id) return;
+        const path = type === 'playlist' ? '/playlist?source=' : '/video?source=';
+        const redirectUrl = `${BASE_DASHBOARD_URL}${path}${encodeURIComponent(id)}`;
+        window.location.replace(redirectUrl);
+    }
+
     // --- TECHLOQ SPECIFIC LOGIC ---
-    
-    /**
-     * Tries to find the video ID using both URL parameters and DOM elements.
-     */
-    function findVideoId() {
-        let videoId = null;
 
-        // METHOD A: Check URL Parameters 
+    function findMediaIds() {
+        let videoId = null;
+        let playlistId = null;
+        let urlToCheck = '';
+
         try {
             const params = new URLSearchParams(window.location.search);
             const encodedRedirectUrl = params.get('redirectUrl');
-
             if (encodedRedirectUrl) {
-                const decodedUrl = decodeURIComponent(encodedRedirectUrl);
-                videoId = getVideoId(decodedUrl);
-                if (videoId) return videoId;
+                urlToCheck = decodeURIComponent(encodedRedirectUrl);
             }
         } catch (e) {}
-        
-        // METHOD B: Check DOM Elements 
-        const blockDiv = document.querySelector('div.block-url');
-        if (blockDiv) {
-            const linkElement = blockDiv.querySelector('a');
-            if (linkElement && linkElement.href) {
-                videoId = getVideoId(linkElement.href);
-            }
+
+        const blockDiv = document.querySelector('div.block-url a');
+        if (blockDiv && blockDiv.href) {
+            urlToCheck = blockDiv.href;
         }
-        
-        return videoId;
+
+        if (urlToCheck) {
+            videoId = getVideoId(urlToCheck);
+            playlistId = getPlaylistId(urlToCheck);
+        }
+
+        return { videoId, playlistId };
     }
 
-    /**
-     * Persistent polling function executed every 250ms.
-     */
     function attemptTechloqRedirect() {
-        const videoId = findVideoId();
+        const { videoId, playlistId } = findMediaIds();
 
+        if (playlistId) {
+            redirectToDashboard('playlist', playlistId);
+            return;
+        }
         if (videoId) {
-            redirectToDashboard(videoId);
-            return; 
+            redirectToDashboard('video', videoId);
+            return;
         }
 
-        // --- RETRY LOGIC ---
         techloqAttemptCount++;
-        
         if (techloqAttemptCount < MAX_TECHLOQ_RETRIES) {
             setTimeout(attemptTechloqRedirect, TECHLOQ_RETRY_INTERVAL_MS);
         }
     }
-
 
     // --- SCRIPT EXECUTION LOGIC ---
 
     const currentUrl = window.location.href;
     const currentHostname = window.location.hostname;
 
-    // SCENARIO 1: YouTube Watch Page (Instant redirect)
-    if (currentHostname === 'www.youtube.com' && currentUrl.includes('/watch')) {
+    if (currentHostname === 'www.youtube.com') {
+        const playlistId = getPlaylistId(currentUrl);
+        if (playlistId) {
+            redirectToDashboard('playlist', playlistId);
+            return;
+        }
+
         const videoId = getVideoId(currentUrl);
         if (videoId) {
-            redirectToDashboard(videoId);
+            redirectToDashboard('video', videoId);
         }
-        return; 
+        return;
     }
 
-    // SCENARIO 2: Techloq Filter Page (Maximal Persistent Polling)
     if (currentHostname.includes('filter.techloq.com')) {
         attemptTechloqRedirect();
-        return;
     }
 
 })();
