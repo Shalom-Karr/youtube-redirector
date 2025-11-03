@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube to SK Dashboard Redirector
 // @namespace    http://tampermonkey.net/
-// @version      4.1 // Added Playlist Support
+// @version      5.0 // Added Playlist Support
 // @description  Instantly redirects from YouTube video and playlist pages. On ALL Techloq pages, it performs immediate and extremely persistent polling.
 // @author       Shalom Karr / YH Studios
 // @match        *://filter.techloq.com/*
